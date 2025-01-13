@@ -51,20 +51,6 @@ Create a functional prototype that:
 
 ---
 
-### **Phase 1 Technical Details**  
-
-#### **Development Stack**  
-- **Framework**: Unity for cross-platform support.  
-- **Language**: C# for logic and interactions.  
-
-#### **Assets**  
-- Use free or basic basketball court and player icon assets from Unity Asset Store.  
-
-#### **Device Compatibility**  
-- Focus on Android for initial testing, with minimal performance requirements.  
-
----
-
 ### **Development Roadmap for Phase 1**  
 
 1. **Week 1: Setup and UI Basics**  

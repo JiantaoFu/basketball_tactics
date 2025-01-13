@@ -155,9 +155,12 @@ class _BasketballCourtState extends State<BasketballCourt> {
               builder: (context, constraints) {
                 return Stack(
                   children: [
-                    CustomPaint(
-                      painter: CourtPainter(isFullCourt: widget.isFullCourt),
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0, bottom: 16.0),
+                      child: CustomPaint(
+                        painter: CourtPainter(isFullCourt: widget.isFullCourt),
+                        size: Size(constraints.maxWidth, constraints.maxHeight),
+                      ),
                     ),
                     if (widget.isAddingSnapPositions)
                       Container(
@@ -396,13 +399,17 @@ class CourtPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
     
-    // Use the full screen height
-    final courtWidth = isFullCourt ? size.width : size.width * 0.6;  // Make half court slightly bigger
-    final courtHeight = size.height;
+    // Add margins to the court dimensions
+    final margin = 20.0;  // Add 20 pixels of margin
+    final courtWidth = (isFullCourt ? size.width : size.width * 0.6) - (margin * 2);  // Subtract margins
+    final courtHeight = size.height - (margin * 2);  // Subtract margins
+
+    // Translate the canvas to create the margin space
+    canvas.translate(margin, margin);
 
     // Center the court horizontally if it's half court
     if (!isFullCourt) {
-      canvas.translate((size.width - courtWidth) / 2, 0);
+      canvas.translate((size.width - courtWidth - margin * 2) / 2, 0);
     }
 
     // Create a clip rect for the court
