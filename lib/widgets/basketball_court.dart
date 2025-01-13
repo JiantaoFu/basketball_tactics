@@ -1,201 +1,277 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
-import 'dart:math';
 import '../models/game_state.dart';
 
 class BasketballCourt extends StatefulWidget {
+  final bool isFullCourt;
+  final bool isAddingSnapPositions;
+  final int? selectedPlayerId;
+  final Function(int?)? onPlayerSelected;
+
+  const BasketballCourt({
+    super.key,
+    this.isFullCourt = true,
+    this.isAddingSnapPositions = false,
+    this.selectedPlayerId,
+    this.onPlayerSelected,
+  });
+
   @override
   _BasketballCourtState createState() => _BasketballCourtState();
 }
 
 class _BasketballCourtState extends State<BasketballCourt> {
-  String? selectedPlayerId;
   final FocusNode _focusNode = FocusNode();
-  static const double _moveStep = 0.02;
+  Timer? _moveTimer;
+  Set<LogicalKeyboardKey> _pressedKeys = {};
 
-  @override
-  void initState() {
-    super.initState();
-    _focusNode.requestFocus();
-  }
+  // Movement speed is now relative to court dimensions
+  double get _moveStepX => 0.003;  // 0.3% of court width per step
+  double get _moveStepY => 0.003 * 1.9;  // Adjusted for court aspect ratio (1.9)
 
   @override
   void dispose() {
+    _moveTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
 
+  void _startMovingPlayer(GameState gameState, String direction) {
+    _movePlayer(gameState, direction);
+    _moveTimer?.cancel();
+    _moveTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      _movePlayer(gameState, direction);
+    });
+  }
+
+  void _stopMovingPlayer() {
+    _moveTimer?.cancel();
+    _moveTimer = null;
+  }
+
   void _movePlayer(GameState gameState, String direction) {
-    if (selectedPlayerId != null) {
-      final player = gameState.players.firstWhere(
-        (p) => p.id == selectedPlayerId,
-        orElse: () => null as Player,
-      );
+    if (widget.selectedPlayerId == null || widget.isAddingSnapPositions) return;
 
-      if (player != null) {
-        double newX = player.x;
-        double newY = player.y;
+    final playerIndex = gameState.players.indexWhere((p) => p.id == widget.selectedPlayerId);
+    if (playerIndex == -1) return;
 
-        switch (direction) {
-          case 'left':
-            newX = (player.x - _moveStep).clamp(0.0, 1.0);
-            break;
-          case 'right':
-            newX = (player.x + _moveStep).clamp(0.0, 1.0);
-            break;
-          case 'up':
-            newY = (player.y - _moveStep).clamp(0.0, 1.0);
-            break;
-          case 'down':
-            newY = (player.y + _moveStep).clamp(0.0, 1.0);
-            break;
-        }
+    final player = gameState.players[playerIndex];
+    double newX = player.x;
+    double newY = player.y;
 
-        if (newX != player.x || newY != player.y) {
-          print('Moving player to ($newX, $newY)'); // Debug print
-          gameState.updatePlayerPosition(player.id, newX, newY);
-        }
-      }
+    switch (direction) {
+      case 'left':
+        newX -= _moveStepX;
+        break;
+      case 'right':
+        newX += _moveStepX;
+        break;
+      case 'up':
+        newY -= _moveStepY;
+        break;
+      case 'down':
+        newY += _moveStepY;
+        break;
     }
+
+    // Clamp values to court boundaries
+    newX = newX.clamp(0.0, 1.0);
+    newY = newY.clamp(0.0, 1.0);
+
+    gameState.updatePlayerPosition(widget.selectedPlayerId!, newX, newY);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        return Focus(
-          focusNode: _focusNode,
-          autofocus: true,
-          onKey: (node, event) {
-            if (event is RawKeyDownEvent) {
-              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                _movePlayer(gameState, 'left');
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                _movePlayer(gameState, 'right');
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                _movePlayer(gameState, 'up');
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                _movePlayer(gameState, 'down');
-                return KeyEventResult.handled;
-              }
-            }
-            return KeyEventResult.ignored;
-          },
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTapDown: (details) {
-                _focusNode.requestFocus();
+    final gameState = Provider.of<GameState>(context);
+    
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (widget.isAddingSnapPositions) return KeyEventResult.ignored;
+        
+        if (event is KeyDownEvent || event is KeyRepeatEvent) {
+          _pressedKeys.add(event.logicalKey);
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _startMovingPlayer(gameState, 'left');
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _startMovingPlayer(gameState, 'right');
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            _startMovingPlayer(gameState, 'up');
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            _startMovingPlayer(gameState, 'down');
+            return KeyEventResult.handled;
+          }
+        } else if (event is KeyUpEvent) {
+          _pressedKeys.remove(event.logicalKey);
+          if (_pressedKeys.isEmpty) {
+            _stopMovingPlayer();
+          }
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Stack(
+        children: [
+          GestureDetector(
+            onTapDown: (details) {
+              if (widget.isAddingSnapPositions) {
                 final RenderBox box = context.findRenderObject() as RenderBox;
                 final localPosition = box.globalToLocal(details.globalPosition);
-                final x = (localPosition.dx / box.size.width).clamp(0.0, 1.0);
-                final y = (localPosition.dy / box.size.height).clamp(0.0, 1.0);
+                final x = localPosition.dx / box.size.width;
+                final y = localPosition.dy / box.size.height;
+                gameState.addSnapPosition(x, y);
+              } else {
+                // Select nearest player when clicking
+                final RenderBox box = context.findRenderObject() as RenderBox;
+                final localPosition = box.globalToLocal(details.globalPosition);
+                final x = localPosition.dx / box.size.width;
+                final y = localPosition.dy / box.size.height;
 
                 double minDistance = double.infinity;
-                String? nearestPlayerId;
+                int? nearestPlayerId;
 
                 for (final player in gameState.players) {
-                  final distance = _calculateDistance(
-                    player.x,
-                    player.y,
-                    x,
-                    y,
-                  );
+                  final distance = _calculateDistance(player.x, player.y, x, y);
                   if (distance < minDistance) {
                     minDistance = distance;
                     nearestPlayerId = player.id;
                   }
                 }
 
-                setState(() {
-                  selectedPlayerId = nearestPlayerId;
-                });
-              },
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.orange[100],
-                      border: Border.all(color: Colors.black, width: 2),
+                widget.onPlayerSelected?.call(nearestPlayerId);
+              }
+              _focusNode.requestFocus();
+            },
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
+                  children: [
+                    CustomPaint(
+                      painter: CourtPainter(isFullCourt: widget.isFullCourt),
+                      size: Size(constraints.maxWidth, constraints.maxHeight),
                     ),
-                    child: Stack(
-                      children: [
-                        CustomPaint(
-                          size: Size(constraints.maxWidth, constraints.maxHeight),
-                          painter: CourtPainter(),
-                        ),
-                        ...gameState.players.map((player) {
-                          final isSelected = player.id == selectedPlayerId;
-                          return Positioned(
-                            left: player.x * constraints.maxWidth - 20,
-                            top: player.y * constraints.maxHeight - 20,
-                            child: MouseRegion(
-                              cursor: SystemMouseCursors.move,
-                              child: Draggable(
-                                feedback: Material(
-                                  color: Colors.transparent,
-                                  child: PlayerWidget(
-                                    player: player,
-                                    isSelected: isSelected,
+                    if (widget.isAddingSnapPositions)
+                      Container(
+                        width: constraints.maxWidth,
+                        height: constraints.maxHeight,
+                        color: Colors.black.withOpacity(0.1),
+                      ),
+                    if (gameState.showSnapPositions)
+                      ...gameState.snapPositions.asMap().entries.map((entry) {
+                        return Positioned(
+                          left: entry.value.x * constraints.maxWidth - 10,
+                          top: entry.value.y * constraints.maxHeight - 10,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.grey.withOpacity(0.5),
+                                    width: 2,
+                                    style: BorderStyle.solid,
                                   ),
                                 ),
-                                childWhenDragging: Container(),
-                                child: PlayerWidget(
-                                  player: player,
-                                  isSelected: isSelected,
-                                ),
-                                onDragEnd: (details) {
-                                  final RenderBox box = context.findRenderObject() as RenderBox;
-                                  final localPosition = box.globalToLocal(details.offset);
-                                  final x = ((localPosition.dx + 20) / constraints.maxWidth).clamp(0.0, 1.0);
-                                  final y = ((localPosition.dy + 20) / constraints.maxHeight).clamp(0.0, 1.0);
-                                  gameState.updatePlayerPosition(player.id, x, y);
-                                },
                               ),
-                            ),
-                          );
-                        }).toList(),
-                        if (selectedPlayerId != null)
-                          Positioned(
-                            left: 10,
-                            top: 10,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(4),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    spreadRadius: 1,
-                                    blurRadius: 1,
+                              if (widget.isAddingSnapPositions)
+                                Positioned(
+                                  right: -8,
+                                  top: -8,
+                                  child: Container(
+                                    width: 16,
+                                    height: 16,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(Icons.close, size: 12),
+                                      padding: EdgeInsets.zero,
+                                      color: Colors.white,
+                                      onPressed: () {
+                                        gameState.removeSnapPosition(entry.key);
+                                      },
+                                    ),
                                   ),
-                                ],
-                              ),
-                              child: const Text(
-                                'Use arrow keys to move the selected player',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
+                                ),
+                            ],
                           ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                        );
+                      }).toList(),
+                    ...gameState.players.map((player) {
+                      final isSelected = player.id == widget.selectedPlayerId;
+                      return Positioned(
+                        left: player.x * constraints.maxWidth - 20,
+                        top: player.y * constraints.maxHeight - 20,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.move,
+                          child: Draggable(
+                            feedback: Material(
+                              color: Colors.transparent,
+                              child: PlayerWidget(
+                                player: player,
+                                isSelected: isSelected,
+                              ),
+                            ),
+                            childWhenDragging: Container(),
+                            child: PlayerWidget(
+                              player: player,
+                              isSelected: isSelected,
+                            ),
+                            onDragEnd: (details) {
+                              final RenderBox box = context.findRenderObject() as RenderBox;
+                              final localPosition = box.globalToLocal(details.offset);
+                              final x = ((localPosition.dx + 20) / constraints.maxWidth).clamp(0.0, 1.0);
+                              final y = ((localPosition.dy + 20) / constraints.maxHeight).clamp(0.0, 1.0);
+                              gameState.updatePlayerPosition(player.id, x, y);
+                            },
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                );
+              },
             ),
           ),
-        );
-      },
+          if (widget.isAddingSnapPositions)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.orange,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'Edit Mode: Click to add positions',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   double _calculateDistance(double x1, double y1, double x2, double y2) {
-    return ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+    return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
   }
 }
 
@@ -204,75 +280,115 @@ class PlayerWidget extends StatelessWidget {
   final bool isSelected;
 
   const PlayerWidget({
-    Key? key,
+    super.key,
     required this.player,
     this.isSelected = false,
-  }) : super(key: key);
+  });
+
+  void _showNameEditDialog(BuildContext context) {
+    final controller = TextEditingController(text: player.name);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Player ${player.number}'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Player Name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final gameState = context.read<GameState>();
+              gameState.updatePlayerName(player.id, controller.text);
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.red,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? Colors.blue : Colors.white,
-              width: isSelected ? 3 : 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                spreadRadius: 1,
-                blurRadius: 2,
-                offset: const Offset(0, 1),
+    return GestureDetector(
+      onDoubleTap: () => _showNameEditDialog(context),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: player.color,
+              border: Border.all(
+                color: isSelected ? Colors.yellow : Colors.white,
+                width: isSelected ? 3 : 2,
               ),
-            ],
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(
+                    color: Colors.yellow.withOpacity(0.3),
+                    spreadRadius: 4,
+                    blurRadius: 4,
+                  ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  spreadRadius: 1,
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                '#${player.number}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
           ),
-          child: Center(
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(4),
+            ),
             child: Text(
-              player.role,
+              player.name,
               style: const TextStyle(
                 color: Colors.white,
-                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(4),
-            border: isSelected ? Border.all(color: Colors.blue, width: 2) : null,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 1,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Text(
-            player.name,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-              color: isSelected ? Colors.blue : Colors.black,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class CourtPainter extends CustomPainter {
+  final bool isFullCourt;
+
+  CourtPainter({
+    this.isFullCourt = true,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
@@ -281,8 +397,13 @@ class CourtPainter extends CustomPainter {
       ..strokeWidth = 2.0;
     
     // Use the full screen height
-    final courtWidth = size.width;
+    final courtWidth = isFullCourt ? size.width : size.width * 0.6;  // Make half court slightly bigger
     final courtHeight = size.height;
+
+    // Center the court horizontally if it's half court
+    if (!isFullCourt) {
+      canvas.translate((size.width - courtWidth) / 2, 0);
+    }
 
     // Create a clip rect for the court
     canvas.clipRect(Rect.fromLTWH(0, 0, courtWidth, courtHeight));
@@ -290,50 +411,55 @@ class CourtPainter extends CustomPainter {
     // Draw main court outline
     canvas.drawRect(Rect.fromLTWH(0, 0, courtWidth, courtHeight), paint);
 
-    // Draw center line
-    final centerX = courtWidth / 2;
-    canvas.drawLine(
-      Offset(centerX, 0),
-      Offset(centerX, courtHeight),
-      paint,
-    );
+    // Draw center line only for full court
+    if (isFullCourt) {
+      final centerX = courtWidth / 2;
+      canvas.drawLine(
+        Offset(centerX, 0),
+        Offset(centerX, courtHeight),
+        paint,
+      );
 
-    // Draw center circle
-    final centerY = courtHeight / 2;
-    final centerCircleRadius = courtWidth * 0.06;
-    canvas.drawCircle(
-      Offset(centerX, centerY),
-      centerCircleRadius,
-      paint,
-    );
+      // Draw center circle
+      final centerY = courtHeight / 2;
+      final centerCircleRadius = courtWidth * 0.06;
+      canvas.drawCircle(
+        Offset(centerX, centerY),
+        centerCircleRadius,
+        paint,
+      );
+    }
 
     // Draw left half
     _drawHalfCourt(
       canvas, 
       paint,
-      Rect.fromLTWH(0, 0, courtWidth / 2, courtHeight),
+      Rect.fromLTWH(0, 0, courtWidth / (isFullCourt ? 2 : 1), courtHeight),
       true
     );
 
-    // Save the canvas state
-    canvas.save();
-    
-    // Translate to the right edge
-    canvas.translate(courtWidth, 0);
-    
-    // Scale x by -1 to mirror, keep y as 1
-    canvas.scale(-1, 1);
-    
-    // Draw the mirrored left half (which will appear on the right)
-    _drawHalfCourt(
-      canvas, 
-      paint,
-      Rect.fromLTWH(0, 0, courtWidth / 2, courtHeight),
-      true
-    );
-    
-    // Restore the canvas state
-    canvas.restore();
+    // Draw right half only for full court
+    if (isFullCourt) {
+      // Save the canvas state
+      canvas.save();
+      
+      // Translate to the right edge
+      canvas.translate(courtWidth, 0);
+      
+      // Scale x by -1 to mirror, keep y as 1
+      canvas.scale(-1, 1);
+      
+      // Draw the mirrored left half (which will appear on the right)
+      _drawHalfCourt(
+        canvas, 
+        paint,
+        Rect.fromLTWH(0, 0, courtWidth / 2, courtHeight),
+        true
+      );
+      
+      // Restore the canvas state
+      canvas.restore();
+    }
   }
 
   void _drawHalfCourt(Canvas canvas, Paint paint, Rect halfCourt, bool isLeft) {

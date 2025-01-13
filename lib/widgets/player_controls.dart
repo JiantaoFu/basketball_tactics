@@ -7,86 +7,56 @@ class PlayerControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        return Container(
-          padding: const EdgeInsets.all(8.0),
-          color: Colors.grey[100],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Team',
-                        style: TextStyle(
-                          fontSize: 20,
+    final gameState = Provider.of<GameState>(context);
+
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          left: BorderSide(
+            color: Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Players',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              itemCount: gameState.players.length,
+              itemBuilder: (context, index) {
+                final player = gameState.players[index];
+                return Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.red,
+                      child: Text(
+                        '#${player.number}',
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${gameState.players.length} Players',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ],
+                    ),
+                    title: Text('Player #${player.number}'),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: Card(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: gameState.players.length,
-                    itemBuilder: (context, index) {
-                      final player = gameState.players[index];
-                      return Card(
-                        color: Colors.white,
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                player.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              DropdownButton<String>(
-                                value: player.role,
-                                isExpanded: true,
-                                items: ['PG', 'SG', 'SF', 'PF', 'C']
-                                    .map((r) => DropdownMenuItem(
-                                          value: r,
-                                          child: Text(r),
-                                        ))
-                                    .toList(),
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    gameState.updatePlayerRole(player.id, value);
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
+                );
+              },
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
