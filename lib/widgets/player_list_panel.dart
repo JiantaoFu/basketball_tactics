@@ -102,19 +102,41 @@ class PlayerListPanel extends StatelessWidget {
                 final player = allPlayers[index];
                 final isSelected = player.id == selectedPlayerId;
                 
-                if (index > 0 && player.team != allPlayers[index - 1].team) {
+                // Show team header for first player or when team changes
+                if (index == 0 || (index > 0 && player.team != allPlayers[index - 1].team)) {
                   return Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Divider(height: 16),
-                      ListTile(
-                        dense: true,
-                        title: Text(
-                          player.team == Team.home ? 'Home Team' : 'Away Team',
-                          style: TextStyle(
-                            color: player.team == Team.home ? Colors.red : Colors.blue,
-                            fontWeight: FontWeight.bold,
+                      if (index > 0) const SizedBox(height: 16),  // Only add spacing between teams
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: player.team == Team.home 
+                            ? Colors.red.withOpacity(0.1)
+                            : Colors.blue.withOpacity(0.1),
+                          border: Border(
+                            left: BorderSide(
+                              color: player.team == Team.home ? Colors.red : Colors.blue,
+                              width: 4,
+                            ),
                           ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              player.team == Team.home ? Icons.home : Icons.flight,
+                              color: player.team == Team.home ? Colors.red : Colors.blue,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              player.team == Team.home ? 'Home Team' : 'Away Team',
+                              style: TextStyle(
+                                color: player.team == Team.home ? Colors.red : Colors.blue,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       _buildPlayerTile(player, isSelected),
