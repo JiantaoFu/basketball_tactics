@@ -155,11 +155,15 @@ class _MyHomePageState extends State<MyHomePage> {
                         isAddingSnapPositions: _isAddingSnapPositions,
                         isCreatingPaths: _isCreatingPaths,
                         selectedPlayerId: _selectedPlayerId,
-                        onPlayerSelected: (id) {
+                        onPlayerSelected: (playerId) {
                           setState(() {
-                            _selectedPlayerId = id;
+                            _selectedPlayerId = playerId;
                           });
-                          gameState.setSelectedPlayer(id);
+                          gameState.setSelectedPlayer(playerId);
+                        },
+                        onPlayerMoved: (player, newX, newY) {
+                          // Update player position in GameState
+                          gameState.updatePlayerPosition(player.id, newX, newY);
                         },
                       ),
                       if (_isCreatingPaths)

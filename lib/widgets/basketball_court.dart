@@ -12,6 +12,7 @@ class BasketballCourt extends StatefulWidget {
   final bool isCreatingPaths;
   final int? selectedPlayerId;
   final Function(int?)? onPlayerSelected;
+  final Function(Player, double, double)? onPlayerMoved;
 
   const BasketballCourt({
     super.key,
@@ -20,6 +21,7 @@ class BasketballCourt extends StatefulWidget {
     this.isCreatingPaths = false,
     this.selectedPlayerId,
     this.onPlayerSelected,
+    this.onPlayerMoved,
   });
 
   @override
@@ -197,43 +199,49 @@ class _BasketballCourtState extends State<BasketballCourt> {
       return Positioned(
         left: player.x * constraints.maxWidth - CourtPainter.kPlayerHalfSize,
         top: player.y * constraints.maxHeight - CourtPainter.kPlayerHalfSize,
-        child: GestureDetector(
-          onTap: () {
-            if (widget.onPlayerSelected != null) {
-              widget.onPlayerSelected!(player.id == widget.selectedPlayerId ? null : player.id);
-            }
-          },
-          onPanStart: (details) {
-            final grabOffsetX = details.localPosition.dx - CourtPainter.kPlayerHalfSize;
-            final grabOffsetY = details.localPosition.dy - CourtPainter.kPlayerHalfSize;
-            setState(() {
-              _dragOffsets[player.id] = Offset(grabOffsetX, grabOffsetY);
-            });
-          },
-          onPanUpdate: (details) {
-            if (player.id == widget.selectedPlayerId) {
-              final RenderBox box = context.findRenderObject() as RenderBox;
+        child: MouseRegion(
+          cursor: SystemMouseCursors.grab,
+          child: GestureDetector(
+            onTap: () {
+              if (widget.onPlayerSelected != null) {
+                widget.onPlayerSelected!(player.id == widget.selectedPlayerId ? null : player.id);
+              }
+            },
+            onPanStart: (details) {
+              final grabOffsetX = details.localPosition.dx - CourtPainter.kPlayerHalfSize;
+              final grabOffsetY = details.localPosition.dy - CourtPainter.kPlayerHalfSize;
+              setState(() {
+                _dragOffsets[player.id] = Offset(grabOffsetX, grabOffsetY);
+              });
+              if (widget.onPlayerSelected != null) {
+                widget.onPlayerSelected!(player.id);
+              }
+            },
+            onPanUpdate: (details) {
+              final box = context.findRenderObject() as RenderBox;
+              final grabOffset = _dragOffsets[player.id] ?? Offset.zero;
               final position = box.globalToLocal(details.globalPosition);
               
-              // Adjust position by the initial grab offset
-              final offset = _dragOffsets[player.id] ?? Offset.zero;
-              final adjustedX = position.dx - offset.dx;
-              final adjustedY = position.dy - offset.dy;
+              final adjustedX = position.dx - grabOffset.dx;
+              final adjustedY = position.dy - grabOffset.dy;
               
               final x = (adjustedX / box.size.width).clamp(0.0, 1.0);
               final y = (adjustedY / box.size.height).clamp(0.0, 1.0);
               
               context.read<GameState>().updatePlayerPosition(player.id, x, y);
-            }
-          },
-          onPanEnd: (details) {
-            setState(() {
-              _dragOffsets.remove(player.id);
-            });
-          },
-          child: PlayerWidget(
-            player: player,
-            isSelected: player.id == widget.selectedPlayerId,
+              if (widget.onPlayerMoved != null) {
+                widget.onPlayerMoved!(player, x, y);
+              }
+            },
+            onPanEnd: (details) {
+              setState(() {
+                _dragOffsets.remove(player.id);
+              });
+            },
+            child: PlayerWidget(
+              player: player,
+              isSelected: gameState.selectedPlayerId == player.id,
+            ),
           ),
         ),
       );
@@ -336,6 +344,9 @@ class _BasketballCourtState extends State<BasketballCourt> {
     newY = newY.clamp(0.0, 1.0);
 
     gameState.updatePlayerPosition(widget.selectedPlayerId!, newX, newY);
+    if (widget.onPlayerMoved != null) {
+      widget.onPlayerMoved!(player, newX, newY);
+    }
   }
 }
 
