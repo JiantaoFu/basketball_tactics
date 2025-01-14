@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 
 enum Team { home, away }
 
+enum PathType {
+  dribble,
+  cut,
+  screen
+}
+
 class Player {
   final int id;
   double x;
@@ -33,18 +39,42 @@ class SnapPosition {
     required this.x,
     required this.y,
     this.isVisible = true,
-    this.snapRadius = 0.05,
+    this.snapRadius = 0.1,  // Increase snap radius to 10% of court size
+  });
+}
+
+class MovementPath {
+  final int startPositionIndex;
+  final int endPositionIndex;
+  final int playerId;
+  final PathType pathType;
+
+  MovementPath({
+    required this.startPositionIndex,
+    required this.endPositionIndex,
+    required this.playerId,
+    required this.pathType,
   });
 }
 
 class GameState extends ChangeNotifier {
   List<Player> _players = [];
   List<SnapPosition> _snapPositions = [];
+  List<MovementPath> _movementPaths = [];
   bool _showSnapPositions = true;
+  bool _isCreatingPath = false;
+  int? _selectedPlayerId;
+  int? _pathStartPositionIndex;
+  PathType _currentPathType = PathType.dribble;
   
   List<Player> get players => _players;
   List<SnapPosition> get snapPositions => _snapPositions;
+  List<MovementPath> get movementPaths => _movementPaths;
   bool get showSnapPositions => _showSnapPositions;
+  bool get isCreatingPath => _isCreatingPath;
+  int? get selectedPlayerId => _selectedPlayerId;
+  int? get pathStartPositionIndex => _pathStartPositionIndex;
+  PathType get currentPathType => _currentPathType;
 
   List<Player> getTeamPlayers(Team team) => _players.where((p) => p.team == team).toList();
 
@@ -147,6 +177,93 @@ class GameState extends ChangeNotifier {
   }
 
   double _calculateDistance(double x1, double y1, double x2, double y2) {
-    return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
+    // Adjust for court aspect ratio (court is typically wider than tall)
+    final dx = x1 - x2;
+    final dy = (y1 - y2) * 1.9;  // Multiply by court aspect ratio
+    return sqrt(dx * dx + dy * dy);
+  }
+
+  void startPathCreation() {
+    print('Starting path creation mode (selectedPlayer: $_selectedPlayerId)'); // Debug print
+    _isCreatingPath = true;
+    _pathStartPositionIndex = null;
+    notifyListeners();
+  }
+
+  void selectPathPosition(int positionIndex) {
+    print('Attempting to select position $positionIndex. isCreatingPath: $_isCreatingPath, startPos: $_pathStartPositionIndex, selectedPlayer: $_selectedPlayerId'); // Debug print
+    
+    if (!_isCreatingPath) {
+      print('Not in path creation mode'); // Debug print
+      return;
+    }
+
+    if (_selectedPlayerId == null) {
+      print('No player selected'); // Debug print
+      return;
+    }
+
+    if (_pathStartPositionIndex == null) {
+      print('Setting start position: $positionIndex'); // Debug print
+      _pathStartPositionIndex = positionIndex;
+      notifyListeners();
+      return;
+    }
+    
+    if (_pathStartPositionIndex != positionIndex) {
+      print('Creating path from ${_pathStartPositionIndex} to $positionIndex'); // Debug print
+      _movementPaths.add(MovementPath(
+        startPositionIndex: _pathStartPositionIndex!,
+        endPositionIndex: positionIndex,
+        playerId: _selectedPlayerId!,
+        pathType: _currentPathType,
+      ));
+      _pathStartPositionIndex = null;
+      notifyListeners();
+    } else {
+      print('Same position selected, ignoring'); // Debug print
+    }
+  }
+
+  void setSelectedPlayer(int? playerId) {
+    print('Setting selected player to: $playerId (isCreatingPath: $_isCreatingPath)'); // Debug print
+    _selectedPlayerId = playerId;
+    // Reset path start position when switching players
+    if (_isCreatingPath) {
+      _pathStartPositionIndex = null;
+    }
+    notifyListeners();
+  }
+
+  void cancelPathCreation() {
+    print('Exiting path creation mode (selectedPlayer: $_selectedPlayerId)'); // Debug print
+    _isCreatingPath = false;
+    _pathStartPositionIndex = null;
+    notifyListeners();
+  }
+
+  void togglePathCreation() {
+    _isCreatingPath = !_isCreatingPath;
+    if (!_isCreatingPath) {
+      _pathStartPositionIndex = null;
+    }
+    notifyListeners();
+  }
+
+  void setPathType(PathType type) {
+    _currentPathType = type;
+    notifyListeners();
+  }
+
+  void removeMovementPath(int index) {
+    if (index >= 0 && index < _movementPaths.length) {
+      _movementPaths.removeAt(index);
+      notifyListeners();
+    }
+  }
+
+  void clearMovementPaths() {
+    _movementPaths.clear();
+    notifyListeners();
   }
 }

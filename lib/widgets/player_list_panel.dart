@@ -4,7 +4,7 @@ import '../models/game_state.dart';
 
 class PlayerListPanel extends StatelessWidget {
   final int? selectedPlayerId;
-  final Function(int) onPlayerSelected;
+  final Function(int?) onPlayerSelected;
 
   const PlayerListPanel({
     super.key,
@@ -15,126 +15,149 @@ class PlayerListPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gameState = context.watch<GameState>();
-    
+    final isCreatingPath = gameState.isCreatingPath;
+    final allPlayers = [...gameState.getTeamPlayers(Team.home), ...gameState.getTeamPlayers(Team.away)];
+
     return Container(
-      width: 250,
+      width: 300,  
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 5,
-            offset: const Offset(-2, 0),
+        border: Border(
+          left: BorderSide(
+            color: Colors.grey[300]!,
+            width: 1,
           ),
-        ],
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildTeamSection(context, 'Home Team', Team.home, gameState),
-          const Divider(height: 1),
-          _buildTeamSection(context, 'Away Team', Team.away, gameState),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTeamSection(BuildContext context, String title, Team team, GameState gameState) {
-    final players = gameState.getTeamPlayers(team);
-    final teamColor = team == Team.home ? const Color(0xFFE53935) : const Color(0xFF1E88E5);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          color: teamColor.withOpacity(0.1),
-          child: Text(
-            title,
-            style: TextStyle(
-              color: teamColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-        ),
-        ...players.map((player) => _buildPlayerTile(context, player, gameState)),
-      ],
-    );
-  }
-
-  Widget _buildPlayerTile(BuildContext context, Player player, GameState gameState) {
-    final isSelected = player.id == selectedPlayerId;
-
-    return ListTile(
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: player.color,
-          border: Border.all(
-            color: isSelected ? Colors.yellow : Colors.white,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: [
-            if (isSelected)
-              BoxShadow(
-                color: Colors.yellow.withOpacity(0.3),
-                spreadRadius: 2,
-                blurRadius: 2,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.grey[300]!,
+                  width: 1,
+                ),
               ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            '#${player.number}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.people),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Players',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+                if (isCreatingPath) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: selectedPlayerId == null ? Colors.orange[50] : Colors.green[50],
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: selectedPlayerId == null ? Colors.orange : Colors.green,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selectedPlayerId == null ? Icons.warning : Icons.check_circle,
+                          size: 16,
+                          color: selectedPlayerId == null ? Colors.orange : Colors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            selectedPlayerId == null
+                                ? 'Select a player to create path'
+                                : 'Player selected',
+                            style: TextStyle(
+                              color: selectedPlayerId == null ? Colors.orange[900] : Colors.green[900],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-        ),
-      ),
-      title: Text(player.name),
-      selected: isSelected,
-      selectedTileColor: Colors.yellow.withOpacity(0.1),
-      onTap: () => onPlayerSelected(player.id),
-      trailing: IconButton(
-        icon: const Icon(Icons.edit, size: 20),
-        onPressed: () => _showNameEditDialog(context, player, gameState),
+          Expanded(
+            child: ListView.builder(
+              itemCount: allPlayers.length,
+              itemBuilder: (context, index) {
+                final player = allPlayers[index];
+                final isSelected = player.id == selectedPlayerId;
+                
+                if (index > 0 && player.team != allPlayers[index - 1].team) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Divider(height: 16),
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          player.team == Team.home ? 'Home Team' : 'Away Team',
+                          style: TextStyle(
+                            color: player.team == Team.home ? Colors.red : Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      _buildPlayerTile(player, isSelected),
+                    ],
+                  );
+                }
+                
+                return _buildPlayerTile(player, isSelected);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  void _showNameEditDialog(BuildContext context, Player player, GameState gameState) {
-    final controller = TextEditingController(text: player.name);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit Player ${player.number}'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Player Name',
-            border: OutlineInputBorder(),
+  Widget _buildPlayerTile(Player player, bool isSelected) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: player.color.withOpacity(isSelected ? 1.0 : 0.7),
+        child: Text(
+          player.number.toString(),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
           ),
-          autofocus: true,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              gameState.updatePlayerName(player.id, controller.text);
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
+      title: Text(
+        player.name,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : null,
+        ),
+      ),
+      subtitle: Text(
+        '#${player.number} - ${player.team == Team.home ? 'Home' : 'Away'}',
+        style: TextStyle(
+          color: player.team == Team.home ? Colors.red : Colors.blue,
+        ),
+      ),
+      selected: isSelected,
+      selectedTileColor: Colors.blue[50],
+      onTap: () => onPlayerSelected(isSelected ? null : player.id),
     );
   }
 }

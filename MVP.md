@@ -103,3 +103,11 @@ For the MVP (Minimum Viable Product), let’s focus on **core features** that pr
 ---
 
 This MVP keeps the focus on core functionality and provides value to your team without unnecessary complexity. Once it's validated, we can expand with more tactics, advanced actions, and richer multiplayer experiences. Let me know how you’d like to proceed!
+
+
+
+Notes:
+
+Add a dropdown to select path types (dribble/cut/screen)?
+Add visual indicators for the path direction (arrows)?
+Add the ability to delete paths?
