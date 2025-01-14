@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart'; // Import flutter/foundation.dart for listEquals
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 
@@ -143,6 +144,7 @@ class _BasketballCourtState extends State<BasketballCourt> {
         isCreatingPath: widget.isCreatingPaths,
         pathStartIndex: gameState.pathStartPositionIndex,
         selectedPlayerId: widget.selectedPlayerId,
+        playSteps: gameState.playSteps ?? [], // Provide empty list as fallback
       ),
       size: Size(constraints.maxWidth, constraints.maxHeight),
     );
@@ -197,8 +199,8 @@ class _BasketballCourtState extends State<BasketballCourt> {
   List<Widget> _buildPlayers(GameState gameState, BoxConstraints constraints) {
     return gameState.players.map((player) {
       return Positioned(
-        left: player.x * constraints.maxWidth - CourtPainter.kPlayerHalfSize,
-        top: player.y * constraints.maxHeight - CourtPainter.kPlayerHalfSize,
+        left: player.position.x * constraints.maxWidth - CourtPainter.kPlayerHalfSize,
+        top: player.position.y * constraints.maxHeight - CourtPainter.kPlayerHalfSize,
         child: MouseRegion(
           cursor: SystemMouseCursors.grab,
           child: GestureDetector(
@@ -241,6 +243,7 @@ class _BasketballCourtState extends State<BasketballCourt> {
             child: PlayerWidget(
               player: player,
               isSelected: gameState.selectedPlayerId == player.id,
+              gameState: gameState, // Pass GameState to PlayerWidget
             ),
           ),
         ),
@@ -255,20 +258,26 @@ class _BasketballCourtState extends State<BasketballCourt> {
     return Focus(
       focusNode: _focusNode,
       onKeyEvent: _handleKeyEvent,
-      child: GestureDetector(
-        onTapUp: _onTapUp,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                _buildCourt(gameState, constraints),
-                ..._buildSnapPositions(gameState, constraints),
-                ..._buildPlayers(gameState, constraints),
-              ],
-            );
-          },
-        ),
+      child: Column(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTapUp: _onTapUp,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      _buildCourt(gameState, constraints),
+                      ..._buildSnapPositions(gameState, constraints),
+                      ..._buildPlayers(gameState, constraints),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -321,8 +330,8 @@ class _BasketballCourtState extends State<BasketballCourt> {
     if (playerIndex == -1) return;
 
     final player = gameState.players[playerIndex];
-    double newX = player.x;
-    double newY = player.y;
+    double newX = player.position.x;
+    double newY = player.position.y;
 
     switch (direction) {
       case 'left':
@@ -353,11 +362,13 @@ class _BasketballCourtState extends State<BasketballCourt> {
 class PlayerWidget extends StatelessWidget {
   final Player player;
   final bool isSelected;
+  final GameState gameState;
 
   const PlayerWidget({
     super.key,
     required this.player,
-    this.isSelected = false,
+    required this.isSelected,
+    required this.gameState,
   });
 
   void _showNameEditDialog(BuildContext context) {
@@ -396,48 +407,137 @@ class PlayerWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onDoubleTap: () => _showNameEditDialog(context),
-      child: Container(
-        width: CourtPainter.kPlayerSize,
-        height: CourtPainter.kPlayerSize,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: player.color,
-          border: Border.all(
-            color: isSelected ? Colors.yellow : Colors.white,
-            width: isSelected ? 3 : 2,
-          ),
-          boxShadow: [
-            if (isSelected)
-              BoxShadow(
-                color: Colors.yellow.withOpacity(0.3),
-                spreadRadius: 4,
-                blurRadius: 4,
-              ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              spreadRadius: 1,
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
+      child: CustomPaint(
+        painter: PlayerPainter(
+          player: player,
+          isSelected: isSelected,
+          gameState: gameState,
         ),
-        child: Center(
-          child: Text(
-            '#${player.number}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
+        child: const SizedBox(
+          width: CourtPainter.kPlayerSize,
+          height: CourtPainter.kPlayerSize,
         ),
       ),
     );
   }
 }
 
+class PlayerPainter extends CustomPainter {
+  final Player player;
+  final bool isSelected;
+  final GameState gameState;
+
+  PlayerPainter({
+    required this.player,
+    required this.isSelected,
+    required this.gameState,
+  });
+
+  void _drawPlayer(Canvas canvas, Size size) {
+    final x = size.width / 2;   // Center in the widget
+    final y = size.height / 2;  // Center in the widget
+
+    // Check if player is in correct position for current play step
+    final isInPosition = _isPlayerInPosition(player);
+    
+    // Draw player circle with feedback color
+    final playerPaint = Paint()
+      ..color = isSelected 
+          ? Colors.blue.withOpacity(0.7)
+          : isInPosition != null
+              ? (isInPosition ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3))
+              : player.team == Team.offense
+                  ? Colors.blue.withOpacity(0.3)
+                  : Colors.red.withOpacity(0.3);
+
+    canvas.drawCircle(
+      Offset(x, y),
+      CourtPainter.kPlayerHalfSize,
+      playerPaint,
+    );
+
+    // Draw border
+    final borderPaint = Paint()
+      ..color = isSelected ? Colors.yellow : Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = isSelected ? 3 : 2;
+    
+    canvas.drawCircle(
+      Offset(x, y),
+      CourtPainter.kPlayerHalfSize,
+      borderPaint,
+    );
+
+    // Draw player number
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: player.number.toString(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        x - textPainter.width / 2,
+        y - textPainter.height / 2,
+      ),
+    );
+  }
+
+  bool? _isPlayerInPosition(Player player) {
+    if (gameState.playSteps.isEmpty) return null;
+    
+    // Find the current step for this player
+    final currentStep = gameState.playSteps.firstWhere(
+      (step) => step.playerId == player.number,
+      orElse: () => PlayStep(  // Return a dummy step that will result in null
+        playerId: -1,
+        type: PlayStepType.move,
+        targetPositionIndex: -1,
+      ),
+    );
+    
+    // If we got the dummy step, return null
+    if (currentStep.playerId == -1) return null;
+
+    // Get target position
+    if (currentStep.targetPositionIndex < 0 || 
+        currentStep.targetPositionIndex >= gameState.snapPositions.length) {
+      return null;
+    }
+    final targetPos = gameState.snapPositions[currentStep.targetPositionIndex];
+
+    // Check if player is close enough to target
+    const threshold = 0.05; // 5% of court size
+    final dx = player.position.x - targetPos.x;
+    final dy = player.position.y - targetPos.y;
+    final distance = sqrt(dx * dx + dy * dy);
+    
+    return distance <= threshold;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _drawPlayer(canvas, size);
+  }
+
+  @override
+  bool shouldRepaint(PlayerPainter oldDelegate) {
+    return player != oldDelegate.player || 
+           isSelected != oldDelegate.isSelected ||
+           gameState != oldDelegate.gameState;
+  }
+}
+
 class CourtPainter extends CustomPainter {
   static const double kSnapPositionSize = 40.0;
+  static const double kSnapPositionRadius = 10.0;
   static const double kPlayerSize = 40.0;
   static const double kMargin = 20.0;
   static const double kSnapPositionHalfSize = kSnapPositionSize / 2;
@@ -450,6 +550,7 @@ class CourtPainter extends CustomPainter {
   final bool isCreatingPath;
   final int? pathStartIndex;
   final int? selectedPlayerId;
+  final List<PlayStep> playSteps;
 
   CourtPainter({
     required this.isFullCourt,
@@ -459,6 +560,7 @@ class CourtPainter extends CustomPainter {
     required this.isCreatingPath,
     this.pathStartIndex,
     this.selectedPlayerId,
+    required this.playSteps,
   });
 
   @override
@@ -470,15 +572,15 @@ class CourtPainter extends CustomPainter {
 
     // Add margins to the court dimensions
     final margin = kMargin;
-    final courtWidth = (isFullCourt ? size.width : size.width * 0.6) - (margin * 2);
-    final courtHeight = size.height - (margin * 2);
+    final courtWidth = (isFullCourt ? size.width : size.width * 0.6) - (kMargin * 2);
+    final courtHeight = size.height - (kMargin * 2);
 
     // Translate canvas to account for margin
     canvas.translate(margin, margin);
 
     // Center the court horizontally if it's half court
     if (!isFullCourt) {
-      canvas.translate((size.width - courtWidth - margin * 2) / 2, 0);
+      canvas.translate((size.width - courtWidth - kMargin * 2) / 2, 0);
     }
 
     // Create a clip rect for the court
@@ -596,6 +698,219 @@ class CourtPainter extends CustomPainter {
         }
       }
     }
+
+    // Draw play targets
+    for (final step in playSteps) {
+      _drawPlayTargets(canvas, size, step);
+    }
+  }
+
+  void _drawPlayTargets(Canvas canvas, Size size, PlayStep step) {
+    // Safety check for valid index
+    if (step.targetPositionIndex < 0 || step.targetPositionIndex >= snapPositions.length) {
+      return;
+    }
+
+    final targetPaint = Paint()
+      ..color = step.isCompleted 
+          ? Colors.green.withOpacity(0.5)  // More visible when complete
+          : Colors.green.withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+    
+    final targetStrokePaint = Paint()
+      ..color = step.isCompleted ? Colors.green : Colors.green.withOpacity(0.7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = step.isCompleted ? 3 : 2;  // Thicker when complete
+
+    final screenPaint = Paint()
+      ..color = step.isCompleted
+          ? Colors.orange.withOpacity(0.5)
+          : Colors.orange.withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+    
+    // Get target position from snap positions with safety check
+    final targetPos = snapPositions[step.targetPositionIndex];
+    final targetX = targetPos.x * size.width;
+    final targetY = targetPos.y * size.height;
+    
+    // Different visualization based on step type
+    switch (step.type) {
+      case PlayStepType.move:
+      case PlayStepType.dribble:
+        // Highlight the snap position circle
+        canvas.drawCircle(
+          Offset(targetX, targetY),
+          kSnapPositionRadius * 1.5,
+          targetPaint,
+        );
+        canvas.drawCircle(
+          Offset(targetX, targetY),
+          kSnapPositionRadius * 1.5,
+          targetStrokePaint,
+        );
+        
+        // Draw completion indicator
+        if (step.isCompleted) {
+          final checkPaint = Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2;
+          
+          // Draw checkmark
+          final path = Path()
+            ..moveTo(targetX - 8, targetY)
+            ..lineTo(targetX - 3, targetY + 5)
+            ..lineTo(targetX + 8, targetY - 6);
+          
+          canvas.drawPath(path, checkPaint);
+        }
+        
+        // Draw dotted path line if path indices exist and are valid
+        if (step.pathIndices.isNotEmpty) {
+          final path = Path();
+          var isFirstPoint = true;
+          
+          for (final index in step.pathIndices) {
+            if (index < 0 || index >= snapPositions.length) continue;
+            
+            final pos = snapPositions[index];
+            final x = pos.x * size.width;
+            final y = pos.y * size.height;
+            
+            if (isFirstPoint) {
+              path.moveTo(x, y);
+              isFirstPoint = false;
+            } else {
+              path.lineTo(x, y);
+            }
+          }
+          
+          // Draw dotted line if path has points
+          if (!path.getBounds().isEmpty) {
+            final dashPaint = Paint()
+              ..color = step.isCompleted ? Colors.green : Colors.green.withOpacity(0.7)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = step.isCompleted ? 3 : 2;
+            
+            _drawDashedLine(canvas, path, dashPaint);
+          }
+        }
+        break;
+        
+      case PlayStepType.screen:
+        // Draw screen position indicator
+        final screenRect = Rect.fromCenter(
+          center: Offset(targetX, targetY),
+          width: kSnapPositionRadius * 2.5,
+          height: kSnapPositionRadius * 2.5,
+        );
+        
+        canvas.drawRect(screenRect, screenPaint);
+        canvas.drawRect(
+          screenRect,
+          targetStrokePaint..color = step.isCompleted ? Colors.orange : Colors.orange.withOpacity(0.7),
+        );
+        
+        // Draw screen icon
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: String.fromCharCode(Icons.screen_rotation.codePoint),
+            style: TextStyle(
+              fontSize: 16,
+              color: step.isCompleted ? Colors.orange[900] : Colors.orange[700],
+              fontFamily: Icons.screen_rotation.fontFamily,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            targetX - textPainter.width / 2,
+            targetY - textPainter.height / 2,
+          ),
+        );
+
+        // Draw completion indicator
+        if (step.isCompleted) {
+          canvas.drawCircle(
+            Offset(targetX + kSnapPositionRadius, targetY - kSnapPositionRadius),
+            8,
+            Paint()..color = Colors.green,
+          );
+          
+          final checkPaint = Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2;
+          
+          final checkPath = Path()
+            ..moveTo(targetX + kSnapPositionRadius - 4, targetY - kSnapPositionRadius)
+            ..lineTo(targetX + kSnapPositionRadius - 1, targetY - kSnapPositionRadius + 3)
+            ..lineTo(targetX + kSnapPositionRadius + 4, targetY - kSnapPositionRadius - 3);
+          
+          canvas.drawPath(checkPath, checkPaint);
+        }
+        break;
+        
+      case PlayStepType.shoot:
+        // Draw shooting target
+        final shootRect = Rect.fromCenter(
+          center: Offset(targetX, targetY),
+          width: kSnapPositionRadius * 3,
+          height: kSnapPositionRadius * 3,
+        );
+        
+        canvas.drawOval(shootRect, targetPaint);
+        canvas.drawOval(
+          shootRect,
+          targetStrokePaint,
+        );
+        
+        // Draw basketball icon
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: String.fromCharCode(Icons.sports_basketball.codePoint),
+            style: TextStyle(
+              fontSize: 20,
+              color: step.isCompleted ? Colors.green[900] : Colors.green[700],
+              fontFamily: Icons.sports_basketball.fontFamily,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(
+            targetX - textPainter.width / 2,
+            targetY - textPainter.height / 2,
+          ),
+        );
+
+        // Draw completion indicator
+        if (step.isCompleted) {
+          canvas.drawCircle(
+            Offset(targetX + kSnapPositionRadius * 1.5, targetY - kSnapPositionRadius * 1.5),
+            8,
+            Paint()..color = Colors.green,
+          );
+          
+          final checkPaint = Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2;
+          
+          final checkPath = Path()
+            ..moveTo(targetX + kSnapPositionRadius * 1.5 - 4, targetY - kSnapPositionRadius * 1.5)
+            ..lineTo(targetX + kSnapPositionRadius * 1.5 - 1, targetY - kSnapPositionRadius * 1.5 + 3)
+            ..lineTo(targetX + kSnapPositionRadius * 1.5 + 4, targetY - kSnapPositionRadius * 1.5 - 3);
+          
+          canvas.drawPath(checkPath, checkPaint);
+        }
+        break;
+    }
   }
 
   void _drawHalfCourt(Canvas canvas, Paint paint, Rect halfCourt, bool isLeft) {
@@ -697,14 +1012,38 @@ class CourtPainter extends CustomPainter {
     }
   }
 
+  void _drawDashedLine(Canvas canvas, Path path, Paint paint) {
+    final dashPath = Path();
+    const dashWidth = 10.0;
+    const dashSpace = 5.0;
+    var distance = 0.0;
+    
+    for (final metric in path.computeMetrics()) {
+      while (distance < metric.length) {
+        final start = distance;
+        final end = start + dashWidth;
+        if (end <= metric.length) {
+          dashPath.addPath(
+            metric.extractPath(start, end),
+            Offset.zero,
+          );
+        }
+        distance = end + dashSpace;
+      }
+    }
+    
+    canvas.drawPath(dashPath, paint);
+  }
+
   @override
   bool shouldRepaint(CourtPainter oldDelegate) {
     return isFullCourt != oldDelegate.isFullCourt ||
-           snapPositions != oldDelegate.snapPositions ||
-           movementPaths != oldDelegate.movementPaths ||
+           !listEquals(snapPositions, oldDelegate.snapPositions) || // Use listEquals for proper list comparison
+           !listEquals(movementPaths, oldDelegate.movementPaths) || // Use listEquals for proper list comparison
            showSnapPositions != oldDelegate.showSnapPositions ||
            isCreatingPath != oldDelegate.isCreatingPath ||
            pathStartIndex != oldDelegate.pathStartIndex ||
-           selectedPlayerId != oldDelegate.selectedPlayerId;
+           selectedPlayerId != oldDelegate.selectedPlayerId ||
+           !listEquals(playSteps, oldDelegate.playSteps); // Use listEquals for proper list comparison
   }
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'models/game_state.dart';
 import 'widgets/basketball_court.dart';
 import 'widgets/player_list_panel.dart';
+import 'widgets/play_control_pannel.dart';
 
 void main() {
   runApp(const MyApp());
@@ -148,56 +149,63 @@ class _MyHomePageState extends State<MyHomePage> {
             child: Row(
               children: [
                 Expanded(
-                  child: Stack(
+                  child: Column(
                     children: [
-                      BasketballCourt(
-                        isFullCourt: _isFullCourt,
-                        isAddingSnapPositions: _isAddingSnapPositions,
-                        isCreatingPaths: _isCreatingPaths,
-                        selectedPlayerId: _selectedPlayerId,
-                        onPlayerSelected: (playerId) {
-                          setState(() {
-                            _selectedPlayerId = playerId;
-                          });
-                          gameState.setSelectedPlayer(playerId);
-                        },
-                        onPlayerMoved: (player, newX, newY) {
-                          // Update player position in GameState
-                          gameState.updatePlayerPosition(player.id, newX, newY);
-                        },
-                      ),
-                      if (_isCreatingPaths)
-                        Positioned(
-                          top: 16,
-                          left: 16,
-                          right: 16,
-                          child: Card(
-                            color: _selectedPlayerId == null ? Colors.orange[100] : Colors.blue[100],
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _selectedPlayerId == null
-                                        ? '⚠️ Select a player first from the player list'
-                                        : gameState.pathStartPositionIndex == null
-                                            ? '1. Click a position to start the path'
-                                            : '2. Click another position to complete the path',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
+                      const PlayControlPanel(),
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            BasketballCourt(
+                              isFullCourt: _isFullCourt,
+                              isAddingSnapPositions: _isAddingSnapPositions,
+                              isCreatingPaths: _isCreatingPaths,
+                              selectedPlayerId: _selectedPlayerId,
+                              onPlayerSelected: (playerId) {
+                                setState(() {
+                                  _selectedPlayerId = playerId;
+                                });
+                                gameState.setSelectedPlayer(playerId);
+                              },
+                              onPlayerMoved: (player, newX, newY) {
+                                // Update player position in GameState
+                                gameState.updatePlayerPosition(player.id, newX, newY);
+                              },
+                            ),
+                            if (_isCreatingPaths)
+                              Positioned(
+                                top: 16,
+                                left: 16,
+                                right: 16,
+                                child: Card(
+                                  color: _selectedPlayerId == null ? Colors.orange[100] : Colors.blue[100],
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _selectedPlayerId == null
+                                              ? '⚠️ Select a player first from the player list'
+                                              : gameState.pathStartPositionIndex == null
+                                                  ? '1. Click a position to start the path'
+                                                  : '2. Click another position to complete the path',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (_selectedPlayerId == null)
+                                          const Text(
+                                            'You must select a player before creating their movement path',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
+                                      ],
                                     ),
                                   ),
-                                  if (_selectedPlayerId == null)
-                                    const Text(
-                                      'You must select a player before creating their movement path',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
+                          ],
                         ),
+                      ),
                     ],
                   ),
                 ),

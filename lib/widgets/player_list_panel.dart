@@ -2,96 +2,54 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 
-class PlayerListPanel extends StatelessWidget {
+class PlayerListPanel extends StatefulWidget {
   final int? selectedPlayerId;
   final Function(int?) onPlayerSelected;
 
   const PlayerListPanel({
     super.key,
-    required this.selectedPlayerId,
+    this.selectedPlayerId,
     required this.onPlayerSelected,
   });
 
   @override
+  State<PlayerListPanel> createState() => _PlayerListPanelState();
+}
+
+class _PlayerListPanelState extends State<PlayerListPanel> {
+  Team _selectedTeam = Team.offense;
+
+  @override
   Widget build(BuildContext context) {
-    final gameState = context.watch<GameState>();
+    final gameState = Provider.of<GameState>(context);
     final isCreatingPath = gameState.isCreatingPath;
-    final allPlayers = [...gameState.getTeamPlayers(Team.home), ...gameState.getTeamPlayers(Team.away)];
+    final allPlayers = [
+      ...gameState.getTeamPlayers(Team.offense),
+      ...gameState.getTeamPlayers(Team.defense)
+    ];
 
     return Container(
-      width: 300,  
-      decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(
-            color: Colors.grey[300]!,
-            width: 1,
-          ),
-        ),
-      ),
+      width: 200,
+      color: Colors.grey[200],
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              border: Border(
-                bottom: BorderSide(
-                  color: Colors.grey[300]!,
-                  width: 1,
-                ),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.all(8.0),
+            color: Colors.grey[300],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.people),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Players',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-                if (isCreatingPath) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: selectedPlayerId == null ? Colors.orange[50] : Colors.green[50],
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: selectedPlayerId == null ? Colors.orange : Colors.green,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          selectedPlayerId == null ? Icons.warning : Icons.check_circle,
-                          size: 16,
-                          color: selectedPlayerId == null ? Colors.orange : Colors.green,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            selectedPlayerId == null
-                                ? 'Select a player to create path'
-                                : 'Player selected',
-                            style: TextStyle(
-                              color: selectedPlayerId == null ? Colors.orange[900] : Colors.green[900],
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                const Text(
+                  'Players',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () => _showAddPlayerDialog(context),
+                ),
               ],
             ),
           ),
@@ -100,7 +58,7 @@ class PlayerListPanel extends StatelessWidget {
               itemCount: allPlayers.length,
               itemBuilder: (context, index) {
                 final player = allPlayers[index];
-                final isSelected = player.id == selectedPlayerId;
+                final isSelected = player.id == widget.selectedPlayerId;
                 
                 // Show team header for first player or when team changes
                 if (index == 0 || (index > 0 && player.team != allPlayers[index - 1].team)) {
@@ -111,12 +69,12 @@ class PlayerListPanel extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: player.team == Team.home 
+                          color: player.team == Team.offense 
                             ? Colors.red.withOpacity(0.1)
                             : Colors.blue.withOpacity(0.1),
                           border: Border(
                             left: BorderSide(
-                              color: player.team == Team.home ? Colors.red : Colors.blue,
+                              color: player.team == Team.offense ? Colors.red : Colors.blue,
                               width: 4,
                             ),
                           ),
@@ -124,14 +82,14 @@ class PlayerListPanel extends StatelessWidget {
                         child: Row(
                           children: [
                             Icon(
-                              player.team == Team.home ? Icons.home : Icons.flight,
-                              color: player.team == Team.home ? Colors.red : Colors.blue,
+                              player.team == Team.offense ? Icons.sports_basketball : Icons.shield,
+                              color: player.team == Team.offense ? Colors.red : Colors.blue,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              player.team == Team.home ? 'Home Team' : 'Away Team',
+                              player.team == Team.offense ? 'Offense' : 'Defense',
                               style: TextStyle(
-                                color: player.team == Team.home ? Colors.red : Colors.blue,
+                                color: player.team == Team.offense ? Colors.red : Colors.blue,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
@@ -139,12 +97,58 @@ class PlayerListPanel extends StatelessWidget {
                           ],
                         ),
                       ),
-                      _buildPlayerTile(player, isSelected),
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: player.color.withOpacity(isSelected ? 1.0 : 0.2),
+                          child: Icon(
+                            player.team == Team.offense ? Icons.sports_basketball : Icons.shield,
+                            color: player.color,
+                          ),
+                        ),
+                        title: Text(
+                          player.name,
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '#${player.number} - ${player.team == Team.offense ? 'Offense' : 'Defense'}',
+                          style: TextStyle(
+                            color: player.color,
+                          ),
+                        ),
+                        selected: isSelected,
+                        selectedTileColor: Colors.blue[50],
+                        onTap: () => widget.onPlayerSelected(isSelected ? null : player.id),
+                      ),
                     ],
                   );
                 }
                 
-                return _buildPlayerTile(player, isSelected);
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: player.color.withOpacity(isSelected ? 1.0 : 0.2),
+                    child: Icon(
+                      player.team == Team.offense ? Icons.sports_basketball : Icons.shield,
+                      color: player.color,
+                    ),
+                  ),
+                  title: Text(
+                    player.name,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : null,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '#${player.number} - ${player.team == Team.offense ? 'Offense' : 'Defense'}',
+                    style: TextStyle(
+                      color: player.color,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedTileColor: Colors.blue[50],
+                  onTap: () => widget.onPlayerSelected(isSelected ? null : player.id),
+                );
               },
             ),
           ),
@@ -153,33 +157,58 @@ class PlayerListPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildPlayerTile(Player player, bool isSelected) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: player.color.withOpacity(isSelected ? 1.0 : 0.7),
-        child: Text(
-          player.number.toString(),
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+  void _showAddPlayerDialog(BuildContext context) {
+    final nameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Player'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Player Name'),
+            ),
+            const SizedBox(height: 16),
+            DropdownButton<Team>(
+              value: _selectedTeam,
+              items: Team.values.map((team) {
+                return DropdownMenuItem(
+                  value: team,
+                  child: Text(team == Team.offense ? 'Offense' : 'Defense'),
+                );
+              }).toList(),
+              onChanged: (Team? value) {
+                if (value != null) {
+                  setState(() {
+                    _selectedTeam = value;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
-        ),
+          TextButton(
+            onPressed: () {
+              final gameState = Provider.of<GameState>(context, listen: false);
+              final name = nameController.text.trim();
+              if (name.isNotEmpty) {
+                // Add player logic here
+                // gameState.addPlayer(name, _selectedTeam);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Add'),
+          ),
+        ],
       ),
-      title: Text(
-        player.name,
-        style: TextStyle(
-          fontWeight: isSelected ? FontWeight.bold : null,
-        ),
-      ),
-      subtitle: Text(
-        '#${player.number} - ${player.team == Team.home ? 'Home' : 'Away'}',
-        style: TextStyle(
-          color: player.team == Team.home ? Colors.red : Colors.blue,
-        ),
-      ),
-      selected: isSelected,
-      selectedTileColor: Colors.blue[50],
-      onTap: () => onPlayerSelected(isSelected ? null : player.id),
     );
   }
 }
