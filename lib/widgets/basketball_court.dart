@@ -28,10 +28,21 @@ class _BasketballCourtState extends State<BasketballCourt> {
   final FocusNode _focusNode = FocusNode();
   Timer? _moveTimer;
   Set<LogicalKeyboardKey> _pressedKeys = {};
+  Map<int, bool> _hoverStates = {};  // Track hover state for each snap position
 
   // Movement speed is now relative to court dimensions
   double get _moveStepX => 0.003;  // 0.3% of court width per step
   double get _moveStepY => 0.003 * 1.9;  // Adjusted for court aspect ratio (1.9)
+
+  @override
+  void didUpdateWidget(BasketballCourt oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isAddingSnapPositions != widget.isAddingSnapPositions) {
+      setState(() {
+        _hoverStates.clear(); // Clear hover states when toggling edit mode
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -87,7 +98,7 @@ class _BasketballCourtState extends State<BasketballCourt> {
 
   @override
   Widget build(BuildContext context) {
-    final gameState = Provider.of<GameState>(context);
+    final gameState = context.watch<GameState>();
     
     return Focus(
       focusNode: _focusNode,
@@ -128,7 +139,38 @@ class _BasketballCourtState extends State<BasketballCourt> {
                 final localPosition = box.globalToLocal(details.globalPosition);
                 final x = localPosition.dx / box.size.width;
                 final y = localPosition.dy / box.size.height;
-                gameState.addSnapPosition(x, y);
+
+                // Check if we're clicking on a delete button
+                bool clickedOnDelete = false;
+                for (var entry in gameState.snapPositions.asMap().entries) {
+                  final snapX = entry.value.x * box.size.width;
+                  final snapY = entry.value.y * box.size.height;
+                  // Calculate distance from click to delete button center
+                  final deleteX = snapX;  // Center of delete button
+                  final deleteY = snapY;  // Center of delete button
+                  final dx = localPosition.dx - deleteX;
+                  final dy = localPosition.dy - deleteY;
+                  final distance = sqrt(dx * dx + dy * dy);
+                  
+                  if (distance <= 24) {  // Increased radius to cover the entire button
+                    setState(() {
+                      _hoverStates.clear(); // Clear all hover states when removing a snap position
+                    });
+                    gameState.removeSnapPosition(entry.key);
+                    clickedOnDelete = true;
+                    break;
+                  }
+                }
+
+                // Only add new snap position if we didn't click on a delete button
+                if (!clickedOnDelete) {
+                  setState(() {
+                    // Get the next index that will be used for the new snap position
+                    final newIndex = gameState.snapPositions.length;
+                    _hoverStates[newIndex] = false;
+                  });
+                  gameState.addSnapPosition(x, y);
+                }
               } else {
                 // Select nearest player when clicking
                 final RenderBox box = context.findRenderObject() as RenderBox;
@@ -171,14 +213,14 @@ class _BasketballCourtState extends State<BasketballCourt> {
                     if (gameState.showSnapPositions)
                       ...gameState.snapPositions.asMap().entries.map((entry) {
                         return Positioned(
-                          left: entry.value.x * constraints.maxWidth - 10,
-                          top: entry.value.y * constraints.maxHeight - 10,
+                          left: entry.value.x * constraints.maxWidth - 12,
+                          top: entry.value.y * constraints.maxHeight - 12,
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
                               Container(
-                                width: 20,
-                                height: 20,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
@@ -189,24 +231,33 @@ class _BasketballCourtState extends State<BasketballCourt> {
                                 ),
                               ),
                               if (widget.isAddingSnapPositions)
-                                Positioned(
-                                  right: -8,
-                                  top: -8,
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  onEnter: (_) => setState(() => _hoverStates[entry.key] = true),
+                                  onExit: (_) => setState(() => _hoverStates[entry.key] = false),
                                   child: Container(
-                                    width: 16,
-                                    height: 16,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      color: _hoverStates[entry.key] == true ? Colors.red : Colors.transparent,
                                       shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: _hoverStates[entry.key] == true ? Colors.transparent : Colors.grey.withOpacity(0.5),
+                                        width: 2,
+                                      ),
+                                      boxShadow: _hoverStates[entry.key] == true ? [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          spreadRadius: 1,
+                                          blurRadius: 2,
+                                        ),
+                                      ] : [],
                                     ),
-                                    child: IconButton(
-                                      icon: const Icon(Icons.close, size: 12),
-                                      padding: EdgeInsets.zero,
+                                    child: _hoverStates[entry.key] == true ? const Icon(
+                                      Icons.close,
+                                      size: 16,
                                       color: Colors.white,
-                                      onPressed: () {
-                                        gameState.removeSnapPosition(entry.key);
-                                      },
-                                    ),
+                                    ) : null,
                                   ),
                                 ),
                             ],
@@ -214,6 +265,7 @@ class _BasketballCourtState extends State<BasketballCourt> {
                         );
                       }).toList(),
                     ...gameState.players.map((player) {
+                      if (widget.isAddingSnapPositions) return const SizedBox.shrink();
                       final isSelected = player.id == widget.selectedPlayerId;
                       return Positioned(
                         left: player.x * constraints.maxWidth - 20,
